@@ -42,21 +42,39 @@ module.exports = {
     const targetMember = await interaction.guild.members.fetch(user.id);
     await targetMember.roles.add(role);
 
+try {
+  await user.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(role?.hexColor || '#2F3136')
+        .setTitle('🎉 You’ve Been Promoted!')
+        .setDescription(`Congratulations! You’ve been promoted to **${role.name}** in **${interaction.guild.name}**.`)
+        .addFields(
+          { name: 'Notes', value: notes || 'No additional notes provided.' }
+        )
+        .setFooter({ text: `Promoted by ${interaction.user.tag}` })
+        .setTimestamp()
+    ]
+  });
+} catch (err) {
+  console.warn(`❌ Could not DM ${user.tag}:`, err);
+}
+
     // Build embed
     const promotionEmbed = new EmbedBuilder()
       .setColor(role?.hexColor || '#2F3136') // use role color or fallback
       .setTitle('🎉 Staff Promotion')
       .addFields(
-        { name: 'User', value: `<@${user.id}>`, inline: false },
-        { name: 'New Role', value: `<@&${role.id}>`, inline: false },
-        { name: 'Notes', value: notes || 'No additional notes provided.', inline: false }
+        { name: '<:arrow:1403083049822060644> **User**', value: `<@${user.id}>`, inline: false },
+        { name: '<:arrow:1403083049822060644> **New Role**', value: `<@&${role.id}>`, inline: false },
+        { name: '<:arrow:1403083049822060644> **Notes**', value: notes || 'No additional notes provided.', inline: false }
       )
       .setFooter({ text: `Promoted by ${interaction.user.tag}` })
       .setTimestamp();
 
     // Send confirmation
     await interaction.reply({
-      content: `✅ <@&${role.id}> has been promoted to ${role.name}.`,
+      content: `✅ <@${user.id}> has been promoted to ${role.name}.`,
       ephemeral: true
     });
 

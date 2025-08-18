@@ -75,8 +75,8 @@ module.exports = {
       const logEmbed = new EmbedBuilder()
         .setTitle('⚠️ Member Warned')
         .addFields(
-          { name: 'User', value: `${target.tag} (<@${target.id}>)`, inline: true },
-          { name: 'Moderator', value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: true },
+          { name: 'User', value: `(<@${target.id}>) ${target.id}`, inline: true },
+          { name: 'Moderator', value: `(<@${interaction.user.id}>) ${interaction.user.id}`, inline: true },
           { name: 'Reason', value: reason }
         )
         .setColor(0xffcc00)
@@ -87,6 +87,6 @@ module.exports = {
       console.warn(`Log channel ${logChannelId} missing or not text.`);
     }
 
-    return interaction.editReply(`✅ Warned ${target.tag} for: ${reason}`);
+    return interaction.editReply(`✅ Warned <@${target.id}> for: ${reason}`);
   }
 };

@@ -1,27 +1,26 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const { DISCORD_BOT_TOKEN } = require('./config');
-const TiDatabase = require('./TiDatabase'); // Assuming this is your custom DB module
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-// 🧩 Connect to TiDatabase
-TiDatabase.connect()
-  .then(() => {
-    console.log("✅ Connected to TiDatabase");
-  })
-  .catch((err) => {
-    console.error("❌ Error connecting to TiDatabase:", err);
-  });
-
-client.once('ready', () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-client.on('interactionCreate', interaction => {
-  require('./events/interactionCreate').execute(interaction, client);
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => {
+  console.log('✅ Connected to MongoDB');
+})
+.catch(err => {
+  console.error('❌ MongoDB connection error:', err);
 });
 
 client.commands = new Collection();
@@ -43,4 +42,41 @@ for (const folder of commandFolders) {
   }
 }
 
-client.login(DISCORD_BOT_TOKEN);
+
+client.login(process.env.DISCORD_BOT_TOKEN);
+client.on('ready', () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+
+  client.user.setPresence({
+    activities: [{ name: 'New Jersey Roleplay', type: 3 }],
+    status: 'online'
+  });
+});
+
+
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+const { Events } = require('discord.js');
+
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+
+  if (!command) {
+    console.error(`❌ No command matching ${interaction.commandName} was found.`);
+    return;
+  }
+
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(`❌ Error executing ${interaction.commandName}:`, error);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+    } else {
+      await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+    }
+  }
+});

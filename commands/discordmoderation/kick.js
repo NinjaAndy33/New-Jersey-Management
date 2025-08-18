@@ -1,4 +1,3 @@
-// commands/kick.js
 const { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } = require('discord.js');
 const requiredRoleId = '1405237617515298978';
 const logChannelId = '1405942493081767988';

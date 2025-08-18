@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, Embed } = require('discord.js');
 
 const logChannelId = '1405940504578887690'; // mod-log channel ID
 const allowedRoles = ['1405237617515298978']; // allowed role IDs
@@ -56,25 +56,52 @@ module.exports = {
     const expiresAt = new Date(Date.now() + durationMs);
     const discordTimestamp = `<t:${Math.floor(expiresAt.getTime() / 1000)}:F>`;
 
+    try {
+  await user.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('You’ve received an infraction')
+        .setDescription(`You’ve been issued a **${type}** on **${interaction.guild.name}**.`)
+        .addFields(
+          { name: 'Reason', value: reason },
+          { name: 'Expires', value: discordTimestamp }
+        )
+        .setFooter({ text: `Issued by ${interaction.user.tag}` })
+        .setTimestamp()
+    ]
+  });
+} catch (err) {
+  console.warn(`❌ Could not DM ${user.tag}:`, err);
+}
+
     // Build embed
     const infractionEmbed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle('Staff Infraction')
+      .setTitle('<:people:1403083876720574558> **Staff Infraction**')
       .addFields(
-        { name: 'User', value: user.tag, inline: true },
-        { name: 'Reason', value: reason, inline: true },
-        { name: 'Expires At', value: discordTimestamp, inline: true },
-        { name: 'Type', value: type, inline: true }
+        { name: '<:arrow:1403083049822060644> **User**', value: user.tag, inline: false },
+        { name: '<:arrow:1403083049822060644> **Reason**', value: reason, inline: false },
+        { name: '<:arrow:1403083049822060644> **Type**', value: type, inline: false },
+        { name: '<:arrow:1403083049822060644> **Expiration**', value: discordTimestamp, inline: false }
       )
       .setFooter({ text: `Issued by ${interaction.user.tag}` })
       .setTimestamp();
 
+
     // Send to mod-log channel
     const logChannel = interaction.guild.channels.cache.get(logChannelId);
     if (logChannel) {
-      await logChannel.send({ embeds: [infractionEmbed] });
-    } else {
-      console.warn(`Log channel with ID ${logChannelId} not found.`);
+        await logChannel.send({
+          content: `<@${user.id}>`, 
+          embeds: [infractionEmbed]
+        });
+      } else {
+        console.warn(`Log channel with ID ${logChannelId} not found.`);
+        return interaction.reply({
+          content: '❌ Log channel not found. Infraction not logged.',
+          ephemeral: true
+        });
     }
 
     // Confirm to command issuer
