@@ -1,82 +1,62 @@
-require('dotenv').config();
+// index.js
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const path = require('path');
+const { REST, Routes } = require('discord.js');
 const fs = require('fs');
-const mongoose = require('mongoose');
+const path = require('path');
+require('dotenv').config();
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
-
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB');
-})
-.catch(err => {
-  console.error('❌ MongoDB connection error:', err);
-});
-
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
 
-const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
+const commands = [];
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-for (const folder of commandFolders) {
-  const commandsPath = path.join(foldersPath, folder);
-  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-  for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if ('data' in command && 'execute' in command) {
-      client.commands.set(command.data.name, command);
-    } else {
-      console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
-    }
+// Load commands
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const command = require(filePath);
+  if ('data' in command && 'execute' in command) {
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
+  } else {
+    console.warn(`[WARNING] The command at ${filePath} is missing "data" or "execute".`);
   }
 }
 
+// Deploy commands
+const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-client.login(process.env.DISCORD_BOT_TOKEN);
-client.on('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+(async () => {
+  try {
+    console.log(`Deploying ${commands.length} commands...`);
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+    console.log('✅ Commands deployed successfully.');
+  } catch (error) {
+    console.error('❌ Error deploying commands:', error);
+  }
+})();
 
-  client.user.setPresence({
-    activities: [{ name: 'New Jersey Roleplay', type: 3 }],
-    status: 'online'
-  });
-});
-
-
+// Bot login
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Bot is online as ${client.user.tag}`);
 });
-const { Events } = require('discord.js');
 
-client.on(Events.InteractionCreate, async interaction => {
+client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
-
-  if (!command) {
-    console.error(`❌ No command matching ${interaction.commandName} was found.`);
-    return;
-  }
+  if (!command) return;
 
   try {
     await command.execute(interaction);
   } catch (error) {
-    console.error(`❌ Error executing ${interaction.commandName}:`, error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
-    } else {
-      await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-    }
+    console.error(error);
+    await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
   }
 });
+
+client.login(process.env.TOKEN);
