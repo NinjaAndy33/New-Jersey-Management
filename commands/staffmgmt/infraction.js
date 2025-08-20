@@ -2,6 +2,9 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const Infraction = require('../../schema/infractionSchema.js');
 const getNextCaseNumber = require('../../utils/getNextCaseNumber.js');
 
+const STAFF_ROLE_ID = '1405237617515298978'; 
+const LOG_CHANNEL_ID = '1405940504578887690'; 
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('infraction-issue')
@@ -35,6 +38,14 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // 🔒 Role check
+    if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+      return interaction.reply({
+        content: '❌ You do not have permission to use this command.',
+        ephemeral: true
+      });
+    }
+
     const target = interaction.options.getUser('target');
     const reason = interaction.options.getString('reason');
     const type = interaction.options.getString('type');
@@ -55,43 +66,51 @@ module.exports = {
 
     const caseNumber = await getNextCaseNumber(interaction.guild.id);
 
-    await Infraction.create({
-      guildId: interaction.guild.id,
-      userId: target.id,
-      moderatorId: interaction.user.id,
-      reason,
-      type,
-      timestamp: new Date(),
-      caseNumber,
-      expiresAt: expirationDate
-    });
+    try {
+      await Infraction.create({
+        guildId: interaction.guild.id,
+        userId: target.id,
+        moderatorId: interaction.user.id,
+        reason,
+        type,
+        timestamp: new Date(),
+        caseNumber,
+        expiresAt: expirationDate
+      });
+    } catch (err) {
+      console.error('Failed to create infraction:', err);
+      return interaction.reply({
+        content: '❌ Could not record the infraction.',
+        ephemeral: true
+      });
+    }
 
     const embed = new EmbedBuilder()
-      .setColor(0x00BFFF)
-      .setTitle(`✅ Infraction Issued`)
+      .setColor(0xFFFFFF)
+      .setTitle(`<:njrp:1405946538097643580> Staff Infraction`)
       .addFields(
-        { name: 'Case Number', value: `#${caseNumber}`, inline: true },
-        { name: 'User', value: `<@${target.id}> (${target.tag})`, inline: true },
-        { name: 'Type', value: type, inline: true },
-        { name: 'Reason', value: reason }
+        { name: '<:arrow:1403083049822060644> **Case Number**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **User**', value: `<@${target.id}> (${target.id}` },
+        { name: '<:arrow:1403083049822060644> **Type**', value: type },
+        { name: '<:arrow:1403083049822060644> **Reason**', value: reason }
       )
       .setFooter({
-  text: `Issued By: <@${interaction.user.id}>`,
-  iconURL: interaction.user.displayAvatarURL()
-})
+        text: `Issued By: ${interaction.user.tag}`,
+        iconURL: interaction.user.displayAvatarURL()
+      })
       .setTimestamp();
 
     if (expirationDate) {
       embed.addFields({
-        name: 'Expires',
-        value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`,
-        inline: true
+        name: '<:arrow:1403083049822060644> **Expires**',
+        value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`
       });
     }
 
     // 🔔 Log to mod channel
-    const logChannelId = '1405940504578887690'; // Replace with your actual channel ID
-    const logChannel = interaction.guild.channels.cache.get(logChannelId);
+    const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID)
+      ?? await interaction.guild.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+
     if (logChannel) {
       await logChannel.send({
         content: `<@${target.id}>`,
@@ -105,25 +124,28 @@ module.exports = {
         .setColor(0xFFA500)
         .setTitle(`⚠️ You’ve received an infraction in ${interaction.guild.name}`)
         .addFields(
-          { name: 'Case Number', value: `#${caseNumber}` },
-          { name: 'Type', value: type },
-          { name: 'Reason', value: reason },
-          { name: 'Moderator', value: `${interaction.user.tag}` }
+          { name: '<:arrow:1403083049822060644> **Case Number**', value: `#${caseNumber}` },
+          { name: '<:arrow:1403083049822060644> **Type**', value: type },
+          { name: '<:arrow:1403083049822060644> **Reason**', value: reason },
+          { name: '<:arrow:1403083049822060644> **Issued By:**', value: `<@${interaction.user.id}>` }
         )
         .setTimestamp();
 
       if (expirationDate) {
         dmEmbed.addFields({
-          name: 'Expires',
+          name: '<:arrow:1403083049822060644> **Expires**',
           value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`
         });
       }
 
       await target.send({ embeds: [dmEmbed] });
     } catch (err) {
-      console.warn(`Could not DM ${target.tag}:`, err);
+      console.warn(`Could not DM ${target.username}:`, err);
     }
 
-    return interaction.reply({ embeds: [embed] });
+    return interaction.reply({
+      content: `<:whitecheck:1407773605642764389> <@${target.id}> has successfully been infracted!`,
+      ephemeral: true
+    });
   }
 };
