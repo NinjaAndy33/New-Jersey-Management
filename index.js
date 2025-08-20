@@ -114,19 +114,20 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN)
 
 (async () => {
   try {
-    console.log('🧹 Cleaning up existing global slash commands...');
-    const existing = await rest.get(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID));
-    for (const cmd of existing) {
-      await rest.delete(Routes.applicationCommand(process.env.DISCORD_CLIENT_ID, cmd.id));
-      console.log(`🗑️ Deleted: ${cmd.name}`);
-    }
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const guildId = process.env.DISCORD_GUILD_ID; // Optional: only needed for guild commands
 
-    console.log(`🚀 Deploying ${commands.length} active slash commands...`);
-    await rest.put(
-      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
-      { body: commands }
-    );
-    console.log('✅ Slash commands deployed successfully.');
+    // 🧹 Delete all guild commands (if applicable)
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] });
+    console.log('🗑️ Successfully deleted all guild commands.');
+
+    // 🧹 Delete all global commands
+    await rest.put(Routes.applicationCommands(clientId), { body: [] });
+    console.log('🗑️ Successfully deleted all global application commands.');
+
+    // 🚀 Deploy active slash commands globally
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    console.log(`✅ Successfully deployed ${commands.length} active slash commands.`);
   } catch (error) {
     console.error('❌ Error during command cleanup or deployment:', error);
   }
