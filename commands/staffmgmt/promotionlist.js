@@ -60,7 +60,6 @@ module.exports = {
           value: [
             `**Date:** <t:${Math.floor(promo.timestamp.getTime() / 1000)}:F>`,
             `**Promoted By:** <@${promo.moderatorId}>`,
-            `**From:** <@&${promo.oldRole}>`,
             `**To:** <@&${promo.newRole}>`,
             `**Reason:** ${promo.reason}`,
             `**Link:** ${link}`

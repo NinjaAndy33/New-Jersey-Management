@@ -1,76 +1,95 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ChannelType } = require('discord.js');
-const ms = require('ms');
-const logChannelId = '1405942493081767988';
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const Moderation = require('../../schema/moderationSchema.js');
+const getNextModCaseNumber = require('../../utils/getNextModCaseNumber.js');
+
+const STAFF_ROLE_ID = '1405237617515298978';
+const MODLOG_CHANNEL_ID = '1405942493081767988';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('mute')
-    .setDescription('Log a temporary mute without applying a role')
-    .addUserOption(option =>
-      option.setName('target').setDescription('User to mute').setRequired(true))
-    .addStringOption(option =>
-      option.setName('duration').setDescription('Mute duration (e.g. 10m, 1h)').setRequired(true))
-    .addStringOption(option =>
-      option.setName('reason').setDescription('Reason for mute').setRequired(false))
-    .setDefaultMemberPermissions(PermissionFlagsBits.MuteMembers),
+    .setDescription('Timeout a user for a set duration')
+    .addUserOption(opt =>
+      opt.setName('target').setDescription('User to mute').setRequired(true)
+    )
+    .addIntegerOption(opt =>
+      opt.setName('duration').setDescription('Duration in minutes').setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName('reason').setDescription('Reason for mute').setRequired(true)
+    ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    // 🔐 Permission check
+    if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+      return interaction.reply({ content: '❌ You lack permission.', ephemeral: true });
+    }
 
-    const target = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(target.id);
-    const duration = interaction.options.getString('duration');
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const timeMs = ms(duration);
+    const target = interaction.options.getMember('target');
+    const duration = interaction.options.getInteger('duration');
+    const reason = interaction.options.getString('reason');
+    const caseNumber = await getNextModCaseNumber(interaction.guild.id);
 
-    if (!member) return interaction.editReply('❌ Member not found.');
-    if (!timeMs) return interaction.editReply('❌ Invalid duration format.');
-    if (target.bot || target.id === interaction.user.id) return interaction.editReply('❌ Invalid target.');
-    if (member.roles.highest.position >= interaction.member.roles.highest.position)
-      return interaction.editReply('❌ Cannot mute someone with equal or higher role.');
+    // ❌ Invalid target
+    if (!target || !target.timeout) {
+      return interaction.reply({ content: '❌ Cannot mute this user.', ephemeral: true });
+    }
 
-    // DM the user
-    const dmEmbed = new EmbedBuilder()
-      .setTitle('⚠️ You have been muted')
-      .setDescription(`You were muted in **${interaction.guild.name}**.`)
+    const ms = duration * 60 * 1000;
+    await target.timeout(ms, reason);
+
+    // 📝 Log to database
+    await Moderation.create({
+      guildId: interaction.guild.id,
+      userId: target.id,
+      moderatorId: interaction.user.id,
+      action: 'mute',
+      reason,
+      caseNumber,
+      duration
+    });
+
+    // 📋 Embed for modlog
+    const embed = new EmbedBuilder()
+      .setColor(0xFFA500)
+      .setTitle('<:njrp:1405946538097643580> User Muted')
       .addFields(
-        { name: 'Duration', value: duration, inline: true },
-        { name: 'Reason', value: reason, inline: true },
-        { name: 'Moderator', value: interaction.user.tag, inline: true }
+        { name: '<:arrow:1403083049822060644> **Case**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **User**', value: `<@${target.id}>` },
+        { name: '<:arrow:1403083049822060644> **Duration**', value: `${duration} minutes` },
+        { name: '<:arrow:1403083049822060644> **Reason**', value: reason },
+        { name: '<:arrow:1403083049822060644> **Moderator**', value: `<@${interaction.user.id}>` }
       )
-      .setColor(0xffcc00)
+      .setTimestamp();
+
+    // 📤 Send to modlog channel
+    const logChannel = interaction.guild.channels.cache.get(MODLOG_CHANNEL_ID);
+    if (logChannel) logChannel.send({ embeds: [embed] });
+
+    // 📬 DM the user
+    const dmEmbed = new EmbedBuilder()
+      .setColor(0xFFA500)
+      .setTitle(`<:njrp:1405946538097643580> You’ve been muted in ${interaction.guild.name}`)
+      .addFields(
+        { name: '<:arrow:1403083049822060644> **Case**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **Duration**', value: `${duration} minutes` },
+        { name: '<:arrow:1403083049822060644> **Reason**', value: reason },
+        { name: '<:arrow:1403083049822060644> **Moderator**', value: `<@${interaction.user.id}>` }
+      )
       .setTimestamp();
 
     try {
-      await target.send({ embeds: [dmEmbed] });
+      await target.send({
+        embeds: [dmEmbed]
+      });
     } catch (err) {
-      console.warn(`Could not DM ${target.tag}:`, err);
+      console.warn(`⚠️ Failed to DM ${target.user.tag}:`, err.message);
     }
 
-    // Log to mod channel
-    const logChannel = interaction.guild.channels.cache.get(logChannelId);
-    if (logChannel?.type === ChannelType.GuildText) {
-      const muteEmbed = new EmbedBuilder()
-        .setTitle('User Muted (Logged Only)')
-        .setColor(0x808080)
-        .addFields(
-          { name: 'User', value: `${member}`, inline: true },
-          { name: 'Duration', value: duration, inline: true },
-          { name: 'Reason', value: reason, inline: false }
-        )
-        .setFooter({ text: `Muted by ${interaction.user.tag}` })
-        .setTimestamp();
-
-      await logChannel.send({ embeds: [muteEmbed] }).catch(() =>
-        console.warn(`Log channel ${logChannelId} missing or not text.`));
-    }
-
-    // Optional: Schedule follow-up action
-    setTimeout(() => {
-      console.log(`Mute expired for ${target.tag} after ${duration}`);
-      // You could notify staff or log expiration here
-    }, timeMs);
-
-    return interaction.editReply(`✅ Logged mute for ${target.tag} (${duration})`);
+    // ✅ Confirm to moderator
+    interaction.reply({
+      content: `**Case Number: #${caseNumber}: ${target.username} has been muted for ${duration} minutes!**`,
+      ephemeral: true
+    });
   }
 };

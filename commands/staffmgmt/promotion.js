@@ -99,7 +99,7 @@ module.exports = {
         .setTitle(`🎉 You’ve been promoted in ${interaction.guild.name}!`)
         .addFields(
           { name: '📌 Case Number', value: `#${caseNumber}` },
-          { name: '⬆️ New Role', value: `<@&${newRole.id}>` },
+          { name: '⬆️ New Role', value: `${newRole.name}` },
           { name: '📝 Reason', value: reason },
           { name: '👤 Issued By', value: `<@${interaction.user.id}>` }
         )
@@ -112,6 +112,7 @@ module.exports = {
 
     return interaction.reply({
       content: `✅ <@${target.id}> has been promoted to <@&${newRole.id}>.`,
+      ephemeral: true
     });
   }
 };

@@ -1,84 +1,78 @@
-const { EmbedBuilder, PermissionsBitField, SlashCommandBuilder } = require('discord.js');
-const requiredRoleId = '1405237617515298978';
-const logChannelId = '1405942493081767988';
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const Moderation = require('../../schema/moderationSchema.js');
+const getNextModCaseNumber = require('../../utils/getNextModCaseNumber.js');
 
+const STAFF_ROLE_ID = '1405237617515298978';
+const MODLOG_CHANNEL_ID = '1405942493081767988';
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('kick')
-        .setDescription('Kick a member from the server.')
-        .addUserOption(option =>
-            option.setName('user')
-                .setDescription('The user to kick')
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option.setName('reason')
-                .setDescription('The reason for the kick')
-                .setRequired(true)
-        ),
+  data: new SlashCommandBuilder()
+    .setName('kick')
+    .setDescription('Kick a user from the server')
+    .addUserOption(opt =>
+      opt.setName('target').setDescription('User to kick').setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName('reason').setDescription('Reason for kick').setRequired(true)
+    ),
 
-    async execute(interaction) {
-        const target = interaction.options.getUser('user');
-        const reason = interaction.options.getString('reason');
-
-        // Permission check
-        if (!interaction.member.roles.cache.has(requiredRoleId) &&
-            !interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-            return interaction.reply('🚫 You do not have permission to use this command.');
-        }
-
-        const member = await interaction.guild.members.fetch(target.id);
-        if (!member) {
-            return interaction.reply('❌ User not found.');
-        }
-
-        if (!member.kickable) {
-            return interaction.reply('❌ I cannot kick this member.');
-        }
-
-        try {
-            // DM the user
-            await target.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle('🚫 You have been kicked')
-                        .setDescription(`You were kicked from **${interaction.guild.name}**.`)
-                        .addFields(
-                            { name: 'Reason', value: reason },
-                            { name: 'Moderator', value: `<@${interaction.user.id}> (${interaction.user.tag})` }
-                        )
-                        .setColor(0xff9900)
-                        .setTimestamp()
-                ]
-            }).catch(() => {
-                console.warn(`Could not DM ${target.tag}`);
-            });
-
-            // Kick the user
-            await member.kick(reason);
-
-            // Confirmation
-            await interaction.reply(`✅ ${target.tag} has been kicked.`);
-
-            // Log to mod channel
-            const logChannel = interaction.guild.channels.cache.get(logChannelId);
-            if (logChannel) {
-                const kickembed = new EmbedBuilder()
-                    .setTitle('👢 Member Kicked')
-                    .addFields(
-                        { name: 'User', value: `<@${target.id}> (${target.tag})`, inline: true },
-                        { name: 'Moderator', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
-                        { name: 'Reason', value: reason }
-                    )
-                    .setColor(0xff9900)
-                    .setTimestamp();
-
-                await logChannel.send({ embeds: [kickembed] });
-            }
-        } catch (error) {
-            console.error('Kick Error:', error);
-            await interaction.reply('❌ Something went wrong while trying to kick.');
-        }
+  async execute(interaction) {
+    // 🔐 Permission check
+    if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+      return interaction.reply({ content: '❌ You lack permission.', ephemeral: true });
     }
+
+    const target = interaction.options.getMember('target');
+    const reason = interaction.options.getString('reason');
+    const caseNumber = await getNextModCaseNumber(interaction.guild.id);
+
+    // ❌ Validation
+    if (!target || !target.kickable) {
+      return interaction.reply({ content: '❌ Cannot kick this user.', ephemeral: true });
+    }
+
+    // 📋 Embed for modlog and DM
+    const embed = new EmbedBuilder()
+      .setColor(0xFF4500)
+      .setTitle('<:njrp:1405946538097643580> User Kicked')
+      .addFields(
+        { name: '<:arrow:1403083049822060644> **Case**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **User**', value: `<@${target.id}>` },
+        { name: '<:arrow:1403083049822060644> **Reason**', value: reason },
+        { name: '<:arrow:1403083049822060644> **Moderator**', value: `<@${interaction.user.id}>` }
+      )
+      .setTimestamp();
+
+    // 📬 DM the user before kicking
+    try {
+      await target.send({
+        embeds: [embed.setTitle(`🦵 You’ve been kicked from ${interaction.guild.name}`)]
+      });
+    } catch (err) {
+      console.warn(`⚠️ Failed to DM ${target.user.tag}:`, err.message);
+    }
+
+    // 🦵 Kick the user
+    await target.kick(reason);
+
+    // 📝 Log to database
+    await Moderation.create({
+      guildId: interaction.guild.id,
+      userId: target.id,
+      moderatorId: interaction.user.id,
+      action: 'kick',
+      reason,
+      caseNumber
+    });
+
+    // 📤 Send to modlog channel
+    const logChannel = interaction.guild.channels.cache.get(MODLOG_CHANNEL_ID);
+    if (logChannel) logChannel.send({ embeds: [embed] });
+
+    // ✅ Confirm to moderator
+    interaction.reply({
+      content: `Case Number: #${caseNumber}: ${target.username} has been kicked!**`,
+      ephemeral: true
+    });
+  }
 };

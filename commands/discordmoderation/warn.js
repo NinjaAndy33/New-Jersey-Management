@@ -1,92 +1,92 @@
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const Moderation = require('../../schema/moderationSchema.js');
+const getNextModCaseNumber = require('../../utils/getNextModCaseNumber.js');
 
-const {
-  SlashCommandBuilder,
-  EmbedBuilder,
-  PermissionFlagsBits,
-  ChannelType
-} = require('discord.js');
-
-const logChannelId = '1405942493081767988';
-const requiredRoleId = '1405237617515298978';
+const STAFF_ROLE_ID = '1405237617515298978'; // Replace with your staff role ID
+const MODLOG_CHANNEL_ID = '1405942493081767988'; // Replace with your modlog channel ID
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('warn')
-    .setDescription('Warn a user with a reason')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDescription('Warn a user')
     .addUserOption(opt =>
-      opt.setName('target').setDescription('User to warn').setRequired(true)
+      opt.setName('target')
+        .setDescription('User to warn')
+        .setRequired(true)
     )
     .addStringOption(opt =>
-      opt.setName('reason').setDescription('Reason for the warning').setRequired(true)
+      opt.setName('reason')
+        .setDescription('Reason for the warning')
+        .setRequired(true)
     ),
 
   async execute(interaction) {
-    // 1) Defer immediately to “lock in” the interaction
-    await interaction.deferReply({ ephemeral: true });
-
-    // 2) Guild-only guard
-    if (!interaction.inGuild()) {
-      return interaction.editReply('❌ This command can only run in a server.');
+    // 🔐 Permission check
+    if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+      return interaction.reply({
+        content: '❌ You do not have permission to use this command.',
+        ephemeral: true
+      });
     }
 
-   
-    const moderator =
-      interaction.member ??
-      (await interaction.guild.members.fetch(interaction.user.id).catch(() => null));
-
-   
-    if (
-      !moderator?.roles?.cache?.has(requiredRoleId) &&
-      !moderator?.permissions?.has(PermissionFlagsBits.ModerateMembers)
-    ) {
-      return interaction.editReply('🚫 You do not have permission to use this command.');
-    }
-
-
+    // 🎯 Target & Reason
     const target = interaction.options.getUser('target');
     const reason = interaction.options.getString('reason');
+    const caseNumber = await getNextModCaseNumber(interaction.guild.id);
 
-    if (!target || target.bot || target.id === interaction.user.id) {
-      return interaction.editReply('❌ Invalid target.');
-    }
+    // 🧾 Log to DB
+    await Moderation.create({
+      guildId: interaction.guild.id,
+      userId: target.id,
+      moderatorId: interaction.user.id,
+      action: 'warn',
+      reason,
+      caseNumber,
+      timestamp: new Date()
+    });
 
-    
-    const dmEmbed = new EmbedBuilder()
-      .setTitle('⚠️ You have been warned')
-      .setDescription(`You received a warning in **${interaction.guild.name}**.`)
+    // 📋 Modlog Embed
+    const modlogEmbed = new EmbedBuilder()
+      .setColor(0xFFFF00)
+      .setTitle('<:njrp:1405946538097643580> User Warned')
       .addFields(
-        { name: 'Reason', value: reason },
-        { name: 'Moderator', value: interaction.user.tag }
+        { name: '<:arrow:1403083049822060644> **Case Number:**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **User:**', value: `<@${target.id}> (${target.username})` },
+        { name: '<:arrow:1403083049822060644> **Reason:**', value: reason },
+        { name: '<:arrow:1403083049822060644> **Moderator:**', value: `<@${interaction.user.id}>` }
       )
-      .setColor(0xffcc00)
       .setTimestamp();
 
+    // 📬 DM Embed
+    const dmEmbed = new EmbedBuilder()
+      .setColor(0xFFFF00)
+      .setTitle(`<:njrp:1405946538097643580> You’ve been warned in ${interaction.guild.name}`)
+      .addFields(
+        { name: '<:arrow:1403083049822060644> **Case Number:**', value: `#${caseNumber}` },
+        { name: '<:arrow:1403083049822060644> **Reason:**', value: reason },
+        { name: '<:arrow:1403083049822060644> **Moderator:**', value: `<@${interaction.user.id}>` }
+      )
+      .setTimestamp();
 
+    // 🛰 Send to modlog channel
+    const logChannel = interaction.guild.channels.cache.get(MODLOG_CHANNEL_ID)
+      ?? await interaction.guild.channels.fetch(MODLOG_CHANNEL_ID).catch(() => null);
+
+    if (logChannel) {
+      await logChannel.send({ embeds: [modlogEmbed] });
+    }
+
+    // 📤 DM the user
     try {
       await target.send({ embeds: [dmEmbed] });
     } catch (err) {
-      console.warn(`Could not DM ${target.tag}:`, err);
+      console.warn(`Could not DM ${target.username}:`, err.message);
     }
 
-
-    const logChannel = interaction.guild.channels.cache.get(logChannelId);
-    if (logChannel?.type === ChannelType.GuildText) {
-      const logEmbed = new EmbedBuilder()
-        .setTitle('⚠️ Member Warned')
-        .addFields(
-          { name: 'User', value: `(<@${target.id}>) ${target.id}`, inline: true },
-          { name: 'Moderator', value: `(<@${interaction.user.id}>) ${interaction.user.id}`, inline: true },
-          { name: 'Reason', value: reason }
-        )
-        .setColor(0xffcc00)
-        .setTimestamp();
-
-      await logChannel.send({ embeds: [logEmbed] });
-    } else {
-      console.warn(`Log channel ${logChannelId} missing or not text.`);
-    }
-
-    return interaction.editReply(`✅ Warned <@${target.id}> for: ${reason}`);
+    // ✅ Confirmation
+    return interaction.reply({
+  content: `**Case Number: #${caseNumber}: ${target.username} has been warned!**`,
+  ephemeral: true
+});
   }
 };
