@@ -1,27 +1,24 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField, Embed } = require('discord.js');
-
-const logChannelId = '1405940504578887690'; // mod-log channel ID
-const allowedRoles = ['1405237617515298978']; // allowed role IDs
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const Infraction = require('../../schema/infractionSchema.js');
+const getNextCaseNumber = require('../../utils/getNextCaseNumber.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('infraction-issue')
-    .setDescription('Issue an infraction to a user')
-    .addUserOption(option =>
-      option.setName('user')
-        .setDescription('The user to issue an infraction to')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('reason')
-        .setDescription('The reason for the infraction')
-        .setRequired(true))
-    .addIntegerOption(option =>
-      option.setName('duration')
-        .setDescription('Duration of the infraction in days')
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName('type')
-        .setDescription('The type of infraction')
+    .setDescription('Issue an infraction to a user.')
+    .addUserOption(opt =>
+      opt.setName('target')
+        .setDescription('User to infract')
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName('reason')
+        .setDescription('Reason for the infraction')
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName('type')
+        .setDescription('Select the infraction type')
         .setRequired(true)
         .addChoices(
           { name: 'Notice', value: 'Notice' },
@@ -29,85 +26,104 @@ module.exports = {
           { name: 'Strike', value: 'Strike' },
           { name: 'Suspension', value: 'Suspension' },
           { name: 'Termination', value: 'Termination' }
-        )),
+        )
+    )
+    .addIntegerOption(opt =>
+      opt.setName('expires')
+        .setDescription('Expiration time in days (optional)')
+        .setRequired(false)
+    ),
 
   async execute(interaction) {
-    const member = interaction.member;
+    const target = interaction.options.getUser('target');
+    const reason = interaction.options.getString('reason');
+    const type = interaction.options.getString('type');
+    const expiresInDays = interaction.options.getInteger('expires');
+    const expirationDate = expiresInDays
+      ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+      : null;
 
-    // Permission check
-    const hasRole = allowedRoles.some(role => member.roles.cache.has(role));
-    const isAdmin = member.permissions.has(PermissionsBitField.Flags.Administrator);
-
-    if (!hasRole && !isAdmin) {
+    let targetMember;
+    try {
+      targetMember = await interaction.guild.members.fetch(target.id);
+    } catch {
       return interaction.reply({
-        content: '🚫 You do not have permission to use this command.',
+        content: '❌ That user is not a member of this server.',
         ephemeral: true
       });
     }
 
-    // Get command options
-    const user = interaction.options.getUser('user');
-    const reason = interaction.options.getString('reason');
-    const duration = interaction.options.getInteger('duration');
-    const type = interaction.options.getString('type');
+    const caseNumber = await getNextCaseNumber(interaction.guild.id);
 
-    // Calculate expiration timestamp
-    const durationMs = duration * 24 * 60 * 60 * 1000;
-    const expiresAt = new Date(Date.now() + durationMs);
-    const discordTimestamp = `<t:${Math.floor(expiresAt.getTime() / 1000)}:F>`;
+    await Infraction.create({
+      guildId: interaction.guild.id,
+      userId: target.id,
+      moderatorId: interaction.user.id,
+      reason,
+      type,
+      timestamp: new Date(),
+      caseNumber,
+      expiresAt: expirationDate
+    });
 
-    try {
-  await user.send({
-    embeds: [
-      new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('You’ve received an infraction')
-        .setDescription(`You’ve been issued a **${type}** on **${interaction.guild.name}**.`)
-        .addFields(
-          { name: 'Reason', value: reason },
-          { name: 'Expires', value: discordTimestamp }
-        )
-        .setFooter({ text: `Issued by ${interaction.user.tag}` })
-        .setTimestamp()
-    ]
-  });
-} catch (err) {
-  console.warn(`❌ Could not DM ${user.tag}:`, err);
-}
-
-    // Build embed
-    const infractionEmbed = new EmbedBuilder()
-      .setColor('#FFFFFF')
-      .setTitle('<:people:1403083876720574558> **Staff Infraction**')
+    const embed = new EmbedBuilder()
+      .setColor(0x00BFFF)
+      .setTitle(`✅ Infraction Issued`)
       .addFields(
-        { name: '<:arrow:1403083049822060644> **User**', value: user.tag, inline: false },
-        { name: '<:arrow:1403083049822060644> **Reason**', value: reason, inline: false },
-        { name: '<:arrow:1403083049822060644> **Type**', value: type, inline: false },
-        { name: '<:arrow:1403083049822060644> **Expiration**', value: discordTimestamp, inline: false }
+        { name: 'Case Number', value: `#${caseNumber}`, inline: true },
+        { name: 'User', value: `<@${target.id}> (${target.tag})`, inline: true },
+        { name: 'Type', value: type, inline: true },
+        { name: 'Reason', value: reason }
       )
-      .setFooter({ text: `Issued by ${interaction.user.tag}` })
+      .setFooter({
+  text: `Issued By: <@${interaction.user.id}>`,
+  iconURL: interaction.user.displayAvatarURL()
+})
       .setTimestamp();
 
-
-    // Send to mod-log channel
-    const logChannel = interaction.guild.channels.cache.get(logChannelId);
-    if (logChannel) {
-        await logChannel.send({
-          content: `<@${user.id}>`, 
-          embeds: [infractionEmbed]
-        });
-      } else {
-        console.warn(`Log channel with ID ${logChannelId} not found.`);
-        return interaction.reply({
-          content: '❌ Log channel not found. Infraction not logged.',
-          ephemeral: true
-        });
+    if (expirationDate) {
+      embed.addFields({
+        name: 'Expires',
+        value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`,
+        inline: true
+      });
     }
 
-    // Confirm to command issuer
-    await interaction.reply({
-      content: `✅ Infraction issued to ${user.tag} and logged.`,
-      ephemeral: true
-    });
+    // 🔔 Log to mod channel
+    const logChannelId = '1405940504578887690'; // Replace with your actual channel ID
+    const logChannel = interaction.guild.channels.cache.get(logChannelId);
+    if (logChannel) {
+      await logChannel.send({
+        content: `<@${target.id}>`,
+        embeds: [embed]
+      });
+    }
+
+    // 📩 DM the user
+    try {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle(`⚠️ You’ve received an infraction in ${interaction.guild.name}`)
+        .addFields(
+          { name: 'Case Number', value: `#${caseNumber}` },
+          { name: 'Type', value: type },
+          { name: 'Reason', value: reason },
+          { name: 'Moderator', value: `${interaction.user.tag}` }
+        )
+        .setTimestamp();
+
+      if (expirationDate) {
+        dmEmbed.addFields({
+          name: 'Expires',
+          value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`
+        });
+      }
+
+      await target.send({ embeds: [dmEmbed] });
+    } catch (err) {
+      console.warn(`Could not DM ${target.tag}:`, err);
+    }
+
+    return interaction.reply({ embeds: [embed] });
   }
 };
