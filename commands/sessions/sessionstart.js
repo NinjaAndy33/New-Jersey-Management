@@ -1,21 +1,20 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle,
   PermissionsBitField
 } = require('discord.js');
 
-const requiredRoleId = '1405237617515298978';
-const logChannelId = '1405234503664013543';
+const requiredRoleId = '1405237617515298978'; // Replace with your actual role ID
+const logChannelId = '1405234503664013543';   // Replace with your actual log channel ID
+const erlcLink = 'https://policeroleplay.community/join/fsrpst'; // Replace with your actual ERLC link
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('sessionvote')
-    .setDescription('Vote for a session')
-    .addIntegerOption(option =>
-      option.setName('votes')
-        .setDescription('The number of votes required to start the session')
-        .setRequired(true)
-    ),
+    .setName('sessionlow')
+    .setDescription('Announces that the ERLC session is low.'),
 
   async execute(interaction) {
     if (!interaction.inGuild()) {
@@ -25,15 +24,13 @@ module.exports = {
       });
     }
 
-    const votes = interaction.options.getInteger('votes');
     const member = interaction.member;
-
     const hasRole = member.roles.cache.has(requiredRoleId);
     const isAdmin = member.permissions.has(PermissionsBitField.Flags.Administrator);
 
     if (!hasRole && !isAdmin) {
       return interaction.reply({
-        content: '🚫 You do not have permission to start a session.',
+        content: '🚫 You do not have permission to send a session low announcement.',
         ephemeral: true
       });
     }
@@ -41,14 +38,18 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     const embed = new EmbedBuilder()
-      .setColor('#0099ff')
-      .setTitle('✅ Session Start Up')
-      .setDescription('A Session Startup has been Initiated! Please react with "✅" to vote!')
-      .addFields(
-        { name: 'Required Votes', value: `${votes}`, inline: true },
-        { name: 'Initiator', value: `<@${member.id}>`, inline: true }
-      )
+      .setColor('#ffffff')
+      .setTitle('Session Low')
+      .setDescription('The current ERLC session is now low. Join up for more awesome roleplays!')
+      .setFooter({ text: 'Make sure to read all rules before joining!' })
       .setTimestamp();
+
+    const button = new ButtonBuilder()
+      .setLabel('Join ERLC Server')
+      .setStyle(ButtonStyle.Link)
+      .setURL(erlcLink);
+
+    const row = new ActionRowBuilder().addComponents(button);
 
     const logChannel = interaction.guild.channels.cache.get(logChannelId);
     if (!logChannel) {
@@ -59,21 +60,21 @@ module.exports = {
     }
 
     try {
-      const message = await logChannel.send({
-        content: `<@&1407060155455242272> @here`,
-        embeds: [embed]
+      await logChannel.send({
+        content: `<@&1407060155455242272> @here`, // Optional ping
+        embeds: [embed],
+        components: [row]
       });
 
-      await message.react('✅');
-
-      // Final reply to user — only one embed sent
       return interaction.editReply({
-        content: '✅ Session Vote has been Initiated!'
+        content: '✅ Session Low announcement has been sent!',
+        ephemeral: true
       });
     } catch (error) {
-      console.error('❌ Failed to send message or react:', error);
+      console.error('❌ Failed to send message:', error);
       return interaction.editReply({
-        content: '⚠️ Something went wrong while sending the session startup.'
+        content: '⚠️ Something went wrong while sending the session low announcement.',
+        ephemeral: true
       });
     }
   }
