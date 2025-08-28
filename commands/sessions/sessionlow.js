@@ -11,7 +11,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('sessionlow')
     .setDescription('Announces that the ERLC session is low.')
-    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+ ,
 
   async execute(interaction) {
     const modLogChannelId = config.channels.modLog;
