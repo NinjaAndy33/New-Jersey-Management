@@ -7,6 +7,15 @@ const {
   PermissionFlagsBits
 } = require('discord.js');
 
+const channels = {
+  modLog: '1405234503664013543'
+};
+
+const roles = {
+  sessionHost: '1405237617515298978',
+  staff: '1405229736195784804'
+};
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('sessionlow')
@@ -14,8 +23,8 @@ module.exports = {
  ,
 
   async execute(interaction) {
-    const modLogChannelId = config.channels.modLog;
-    const allowedRoleIds = [config.roles.sessionHost, config.roles.staff];
+    const modLogChannelId = channels.modLog;
+    const allowedRoleIds = [roles.sessionHost, roles.staff];
 
     // Role check
     const hasAllowedRole = interaction.member.roles.cache.some(role =>
@@ -40,21 +49,24 @@ module.exports = {
 
     // Build embed + button
     const embed = new EmbedBuilder()
-      .setTitle('🔻 ERLC Session Low')
-      .setDescription('The current ERLC session is now low. You may begin wrapping up your roleplay or prepare for session end.')
+      .setTitle('Session Low')
+      .setDescription('The current ERLC session is now low. Please join the ERLC server to avoid Session Shutdown!')
       .setColor(0xFF0000)
       .setFooter({ text: 'Please follow all server rules until the session officially ends.' })
       .setTimestamp();
 
     const button = new ButtonBuilder()
-      .setLabel('Join ERLC Server')
+      .setLabel('Quick Join')
       .setStyle(ButtonStyle.Link)
-      .setURL('https://your-erlc-server-link.com'); // ← Replace with your actual link
+      .setURL('https://policeroleplay.community/join/njrpst'); 
 
     const row = new ActionRowBuilder().addComponents(button);
 
     // Send to mod log channel
-    await modLogChannel.send({ embeds: [embed], components: [row] });
+    await modLogChannel.send({ 
+      content: '@here <@&1385413644795379782>',
+      embeds: [embed], 
+      components: [row] });
 
     // Confirm to user
     await interaction.reply({
