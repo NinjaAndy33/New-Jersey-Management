@@ -1,7 +1,13 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} = require('discord.js');
 const Infraction = require('../../schema/infractionSchema.js');
 
-const STAFF_ROLE_ID = '1405229736195784804'; // Replace with your actual staff role ID
+const STAFF_ROLE_ID = '1405229736195784804';
 const INFRACTIONS_PER_PAGE = 5;
 
 module.exports = {
@@ -15,6 +21,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // 🔒 Permission check
     if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
       return interaction.reply({
         content: '❌ You do not have permission to use this command.',
@@ -30,7 +37,8 @@ module.exports = {
 
     if (!infractions.length) {
       return interaction.reply({
-        content: `❌ <@${target.id}> has no infractions on record.`
+        content: `❌ <@${target.id}> has no infractions on record.`,
+        ephemeral: true
       });
     }
 
@@ -43,7 +51,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setColor(0xFF5555)
-        .setTitle(`📄 Infraction History for ${target.username}`)
+        .setTitle(`Infractions for ${target.username}`)
         .setThumbnail(target.displayAvatarURL())
         .setFooter({
           text: `Page ${page + 1} of ${Math.ceil(infractions.length / INFRACTIONS_PER_PAGE)} • Requested by ${interaction.user.tag}`,
@@ -56,13 +64,16 @@ module.exports = {
           ? (infraction.expiresAt < new Date() ? '✅' : '❌')
           : '❌';
 
-        const link = infraction.messageLink || '[No link available]'; // Replace with your logic to generate/view links
+        const link = infraction.messageLink
+          ? `[View Infraction](${infraction.messageLink})`
+          : '[No link available]';
 
         embed.addFields({
-          name: `📌 Case #${infraction.caseNumber} — ${infraction.type}`,
+          name: `Case #${infraction.caseNumber}`,
           value: [
             `**Date:** <t:${Math.floor(infraction.timestamp.getTime() / 1000)}:F>`,
             `**Issuer:** <@${infraction.moderatorId}>`,
+            `**Type:** ${infraction.type}`,
             `**Reason:** ${infraction.reason}`,
             `**Expired:** ${expired}`,
             `**Link:** ${link}`
@@ -92,7 +103,8 @@ module.exports = {
     const message = await interaction.reply({
       embeds: [generateEmbed(page)],
       components: [getRow(page)],
-      fetchReply: true
+      fetchReply: true,
+      ephemeral: true
     });
 
     const collector = message.createMessageComponentCollector({
