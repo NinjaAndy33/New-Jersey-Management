@@ -1,9 +1,15 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} = require('discord.js');
 const Infraction = require('../../schema/infractionSchema.js');
 const getNextCaseNumber = require('../../utils/getNextCaseNumber.js');
 
-const STAFF_ROLE_ID = '1405237617515298978'; 
-const LOG_CHANNEL_ID = '1405940504578887690'; 
+const STAFF_ROLE_ID = '1405237617515298978';
+const LOG_CHANNEL_ID = '1405940504578887690';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -87,12 +93,12 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xFFFFFF)
-      .setTitle(`<:njrp:1405946538097643580> Staff Infraction`)
+      .setTitle(`Staff Infraction`)
       .addFields(
-        { name: '<:arrow:1403083049822060644> **Case Number**', value: `#${caseNumber}` },
-        { name: '<:arrow:1403083049822060644> **User**', value: `<@${target.id}> (${target.id}` },
-        { name: '<:arrow:1403083049822060644> **Type**', value: type },
-        { name: '<:arrow:1403083049822060644> **Reason**', value: reason }
+        { name: '**Case Number**', value: `#${caseNumber}` },
+        { name: '**User**', value: `<@${target.id}> (${target.id})` },
+        { name: '**Type**', value: type },
+        { name: '**Reason**', value: reason }
       )
       .setFooter({
         text: `Issued By: ${interaction.user.tag}`,
@@ -102,7 +108,7 @@ module.exports = {
 
     if (expirationDate) {
       embed.addFields({
-        name: '<:arrow:1403083049822060644> **Expires**',
+        name: '**Expires**',
         value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`
       });
     }
@@ -118,27 +124,38 @@ module.exports = {
       });
     }
 
-    // 📩 DM the user
     try {
       const dmEmbed = new EmbedBuilder()
         .setColor(0xFFA500)
-        .setTitle(`⚠️ You’ve received an infraction in ${interaction.guild.name}`)
+        .setTitle(`Staff Infraction`)
         .addFields(
-          { name: '<:arrow:1403083049822060644> **Case Number**', value: `#${caseNumber}` },
-          { name: '<:arrow:1403083049822060644> **Type**', value: type },
-          { name: '<:arrow:1403083049822060644> **Reason**', value: reason },
-          { name: '<:arrow:1403083049822060644> **Issued By:**', value: `<@${interaction.user.id}>` }
+          { name: '**Case Number**', value: `#${caseNumber}` },
+          { name: '**Type**', value: type },
+          { name: '**Reason**', value: reason },
+          { name: '**Issued By:**', value: `<@${interaction.user.id}>` }
         )
         .setTimestamp();
 
       if (expirationDate) {
         dmEmbed.addFields({
-          name: '<:arrow:1403083049822060644> **Expires**',
+          name: '**Expires**',
           value: `<t:${Math.floor(expirationDate.getTime() / 1000)}:R>`
         });
       }
 
-      await target.send({ embeds: [dmEmbed] });
+      const serverName = interaction.guild.name;
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel(`From: ${serverName}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true)
+      );
+
+      await target.send({
+        embeds: [dmEmbed],
+        components: [row]
+      });
     } catch (err) {
       console.warn(`Could not DM ${target.username}:`, err);
     }
